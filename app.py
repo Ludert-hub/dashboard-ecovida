@@ -97,19 +97,22 @@ else:
         if meses_seleccionados:
             df = df[df['Mes_Filtro'].isin(meses_seleccionados)]
         
-        df['Monto $ +'] = df['Monto $ +'].apply(clean_numeric)
+        df['Monto $+'] = df['Monto$ +'].apply(clean_numeric)
         df['Metodo Bs +'] = df['Metodo Bs +'].apply(clean_numeric) 
-        df['Monto $ -'] = df['Monto $ -'].apply(clean_numeric)
+        df['Monto $-'] = df['Monto$ -'].apply(clean_numeric)
         df['Monto Bs -'] = df['Monto Bs -'].apply(clean_numeric)
         
         df['Destinado'] = df['Destinado'].fillna('No Especificado').astype(str).str.strip().str.title()
         df['Concepto'] = df['Concepto'].fillna('No Especificado').astype(str).str.strip().str.title()
         
+        # --- AGRUPACIONES GLOBALES CON ORDEN DE MAYOR A MENOR ---
         ingresos_global = df.groupby('Destinado')[['Metodo Bs +', 'Monto $ +']].sum()
         ingresos_global = ingresos_global[(ingresos_global['Metodo Bs +'] > 0) | (ingresos_global['Monto $ +'] > 0)]
+        ingresos_global = ingresos_global.sort_values(by='Monto $ +', ascending=False) # ORDENADO
         
         egresos_global = df.groupby('Destinado')[['Monto Bs -', 'Monto $ -']].sum()
         egresos_global = egresos_global[(egresos_global['Monto Bs -'] > 0) | (egresos_global['Monto $ -'] > 0)]
+        egresos_global = egresos_global.sort_values(by='Monto $ -', ascending=False) # ORDENADO
         
         tot_ing_usd = ingresos_global['Monto $ +'].sum()
         tot_ing_bs = ingresos_global['Metodo Bs +'].sum()
@@ -156,7 +159,7 @@ else:
                     
                     rc1.markdown(f"<div title='{dest}' style='font-size: 15px;'><b>{dest_str}</b></div>", unsafe_allow_html=True)
                     rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
-                    rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ +']:,.2f}</div>", unsafe_allow_html=True)
+                    rc3.markdown(f"<div style='font-size: 15px;'>${row['Monto$ +']:,.2f}</div>", unsafe_allow_html=True)
                     if rc4.button("🔍 Ver", key=f"btn_ing_{dest}"):
                         st.session_state.drill_ingreso = dest
                         st.rerun()
@@ -177,7 +180,11 @@ else:
                     
                     st.markdown(f"**Conceptos de: {dest}**")
                     df_filt = df[(df['Destinado'] == dest) & ((df['Metodo Bs +'] > 0) | (df['Monto $ +'] > 0))]
+                    
+                    # --- AGRUPACIÓN DE CONCEPTOS ORDENADA DE MAYOR A MENOR ---
                     agrup_conc = df_filt.groupby('Concepto')[['Metodo Bs +', 'Monto $ +']].sum()
+                    agrup_conc = agrup_conc.sort_values(by='Monto $ +', ascending=False)
+                    
                     total_dest_usd = agrup_conc['Monto $ +'].sum()
                     
                     for conc, row in agrup_conc.iterrows():
@@ -187,7 +194,7 @@ else:
                         
                         rc1.markdown(f"<div title='{conc}' style='font-size: 15px;'>{conc_str}</div>", unsafe_allow_html=True)
                         rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
-                        rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ +']:,.2f}</div>", unsafe_allow_html=True)
+                        rc3.markdown(f"<div style='font-size: 15px;'>${row['Monto$ +']:,.2f}</div>", unsafe_allow_html=True)
                         if rc4.button("👁️ Detalle", key=f"btn_ing_conc_{dest}_{conc}"):
                             st.session_state.drill_ingreso_concepto = conc
                             st.rerun()
@@ -206,6 +213,9 @@ else:
                             
                     st.markdown(f"**Transacciones de: {conc}**")
                     df_detalle = df[(df['Destinado'] == dest) & (df['Concepto'] == conc) & ((df['Metodo Bs +'] > 0) | (df['Monto $ +'] > 0))].copy()
+                    
+                    # --- ORDENAR DETALLE TRANSACCIONAL POR FECHA ---
+                    df_detalle = df_detalle.sort_values(by='Fecha', ascending=True)
                     df_detalle['Fecha'] = df_detalle['Fecha'].dt.strftime('%d/%m/%Y')
                     
                     styled_df = df_detalle[['Fecha', 'Descripción', 'Monto $ +', 'Metodo Bs +']].style.format({
@@ -236,7 +246,7 @@ else:
                     
                     rc1.markdown(f"<div title='{dest}' style='font-size: 15px;'><b>{dest_str}</b></div>", unsafe_allow_html=True)
                     rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
-                    rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ -']:,.2f}</div>", unsafe_allow_html=True)
+                    rc3.markdown(f"<div style='font-size: 15px;'>${row['Monto$ -']:,.2f}</div>", unsafe_allow_html=True)
                     if rc4.button("🔍 Ver", key=f"btn_egr_{dest}"):
                         st.session_state.drill_egreso = dest
                         st.rerun()
@@ -257,7 +267,11 @@ else:
                             
                     st.markdown(f"**Conceptos de: {dest}**")
                     df_filt = df[(df['Destinado'] == dest) & ((df['Monto Bs -'] > 0) | (df['Monto $ -'] > 0))]
+                    
+                    # --- AGRUPACIÓN DE CONCEPTOS ORDENADA DE MAYOR A MENOR ---
                     agrup_conc = df_filt.groupby('Concepto')[['Monto Bs -', 'Monto $ -']].sum()
+                    agrup_conc = agrup_conc.sort_values(by='Monto $ -', ascending=False)
+                    
                     total_dest_usd_egr = agrup_conc['Monto $ -'].sum()
                     
                     for conc, row in agrup_conc.iterrows():
@@ -267,7 +281,7 @@ else:
                         
                         rc1.markdown(f"<div title='{conc}' style='font-size: 15px;'>{conc_str}</div>", unsafe_allow_html=True)
                         rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
-                        rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ -']:,.2f}</div>", unsafe_allow_html=True)
+                        rc3.markdown(f"<div style='font-size: 15px;'>${row['Monto$ -']:,.2f}</div>", unsafe_allow_html=True)
                         if rc4.button("👁️ Detalle", key=f"btn_egr_conc_{dest}_{conc}"):
                             st.session_state.drill_egreso_concepto = conc
                             st.rerun()
@@ -280,19 +294,4 @@ else:
                     conc = st.session_state.drill_egreso_concepto
                     col_b1, col_b2 = st.columns([1, 3])
                     with col_b1:
-                        if st.button("⬅ Volver", key="back_egr_conc"):
-                            st.session_state.drill_egreso_concepto = None
-                            st.rerun()
-                            
-                    st.markdown(f"**Transacciones de: {conc}**")
-                    df_detalle = df[(df['Destinado'] == dest) & (df['Concepto'] == conc) & ((df['Monto Bs -'] > 0) | (df['Monto $ -'] > 0))].copy()
-                    df_detalle['Fecha'] = df_detalle['Fecha'].dt.strftime('%d/%m/%Y')
-                    
-                    styled_df2 = df_detalle[['Fecha', 'Descripción', 'Monto $ -', 'Monto Bs -']].style.format({
-                        'Monto $ -': '{:,.2f}',
-                        'Monto Bs -': '{:,.2f}'
-                    })
-                    st.dataframe(styled_df2, use_container_width=True, hide_index=True)
-
-    except Exception as e:
-        st.error(f"Error procesando los datos. Detalle técnico: {e}")
+                        if st.
