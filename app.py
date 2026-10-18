@@ -3,6 +3,13 @@ import pandas as pd
 import plotly.express as px
 import os
 
+# --- Función para acortar textos largos y evitar solapamientos ---
+def acortar(texto, limite=18):
+    texto_str = str(texto)
+    if len(texto_str) > limite:
+        return texto_str[:limite] + "..."
+    return texto_str
+
 # --- Función para limpiar formatos numéricos ---
 def clean_numeric(val):
     if pd.isna(val) or val == '':
@@ -23,14 +30,13 @@ def clean_numeric(val):
 # --- Configuración visual de la App ---
 st.set_page_config(page_title="Dashboard Ecovida", layout="wide")
 
-# Variables de Estado para el Drill-down (Profundidad)
+# Variables de Estado para el Drill-down
 if 'drill_ingreso' not in st.session_state: st.session_state.drill_ingreso = None
 if 'drill_ingreso_concepto' not in st.session_state: st.session_state.drill_ingreso_concepto = None
 
 if 'drill_egreso' not in st.session_state: st.session_state.drill_egreso = None
 if 'drill_egreso_concepto' not in st.session_state: st.session_state.drill_egreso_concepto = None
 
-# Variable para evitar el bug del reseteo del archivo cargado
 if 'last_uploaded' not in st.session_state: st.session_state.last_uploaded = None
 
 # --- BARRA LATERAL Y PERSISTENCIA DE ARCHIVO ---
@@ -45,7 +51,6 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("<h3 style='text-align: center;'>Actualizar Datos</h3>", unsafe_allow_html=True)
 uploaded_file = st.sidebar.file_uploader("Subir nuevo Excel (reemplaza al anterior)", type=["xlsx"])
 
-# Lógica corregida: Solo procesa si es un archivo realmente nuevo
 if uploaded_file is not None:
     file_signature = f"{uploaded_file.name}_{uploaded_file.size}"
     
@@ -54,20 +59,14 @@ if uploaded_file is not None:
             f.write(uploaded_file.getbuffer())
         st.sidebar.success("✅ Datos actualizados exitosamente.")
         
-        # Reseteamos las vistas para evitar errores con data nueva
         st.session_state.drill_ingreso = None
         st.session_state.drill_ingreso_concepto = None
         st.session_state.drill_egreso = None
         st.session_state.drill_egreso_concepto = None
-        
-        # Guardamos la firma del archivo para no volver a resetear en el siguiente clic
         st.session_state.last_uploaded = file_signature
 
 # --- LÓGICA DE PANTALLAS ---
 if not os.path.exists(DATA_FILE):
-    # ==========================================
-    # PANTALLA DE INICIO (LANDING PAGE)
-    # ==========================================
     st.markdown("<br><br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -79,18 +78,13 @@ if not os.path.exists(DATA_FILE):
         st.info("👈 No hay datos guardados. Por favor, sube el archivo de Excel en el panel izquierdo.")
 
 else:
-    # ==========================================
-    # PANTALLA DEL DASHBOARD (DATOS CARGADOS)
-    # ==========================================
     st.markdown("<h2 style='text-align: center; color: #1b5e20; margin-top:0px;'>CONTROL DE ENTRADAS Y SALIDAS ECOVIDA</h2>", unsafe_allow_html=True)
 
     try:
-        # Lectura del archivo guardado en el servidor
         df = pd.read_excel(DATA_FILE, sheet_name='General')
         df.columns = df.iloc[0]
         df = df[1:].reset_index(drop=True)
         
-        # --- PROCESAMIENTO DE FECHAS Y FILTRO ---
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
         df = df.dropna(subset=['Fecha']) 
         df['Mes_Filtro'] = df['Fecha'].dt.strftime('%Y-%m') 
@@ -103,7 +97,6 @@ else:
         if meses_seleccionados:
             df = df[df['Mes_Filtro'].isin(meses_seleccionados)]
         
-        # Limpieza financiera
         df['Monto $ +'] = df['Monto $ +'].apply(clean_numeric)
         df['Metodo Bs +'] = df['Metodo Bs +'].apply(clean_numeric) 
         df['Monto $ -'] = df['Monto $ -'].apply(clean_numeric)
@@ -112,14 +105,12 @@ else:
         df['Destinado'] = df['Destinado'].fillna('No Especificado').astype(str).str.strip().str.title()
         df['Concepto'] = df['Concepto'].fillna('No Especificado').astype(str).str.strip().str.title()
         
-        # Agrupaciones Globales
         ingresos_global = df.groupby('Destinado')[['Metodo Bs +', 'Monto $ +']].sum()
         ingresos_global = ingresos_global[(ingresos_global['Metodo Bs +'] > 0) | (ingresos_global['Monto $ +'] > 0)]
         
         egresos_global = df.groupby('Destinado')[['Monto Bs -', 'Monto $ -']].sum()
         egresos_global = egresos_global[(egresos_global['Monto Bs -'] > 0) | (egresos_global['Monto $ -'] > 0)]
         
-        # --- MÉTRICAS SUPERIORES ---
         tot_ing_usd = ingresos_global['Monto $ +'].sum()
         tot_ing_bs = ingresos_global['Metodo Bs +'].sum()
         tot_egr_usd = egresos_global['Monto $ -'].sum()
@@ -133,7 +124,6 @@ else:
         c4.metric("Total Egresos (Bs)", f"Bs {tot_egr_bs:,.2f}")
         st.markdown("---")
 
-        st.markdown("<style>.nowrap-text { white-space: nowrap; font-size: 15px; }</style>", unsafe_allow_html=True)
         col_ingresos, col_divider, col_egresos = st.columns([10, 1, 10])
 
         # ==============================================
@@ -149,11 +139,14 @@ else:
             if st.session_state.drill_ingreso is None:
                 st.markdown("**Desglose por Destinado:**")
                 for dest, row in ingresos_global.iterrows():
-                    rc1, rc2, rc3, rc4 = st.columns([3, 4, 3, 3])
-                    rc1.markdown(f"<div class='nowrap-text'><b>{dest}</b></div>", unsafe_allow_html=True)
-                    rc2.markdown(f"<div class='nowrap-text'>Bs {row['Metodo Bs +']:,.2f}</div>", unsafe_allow_html=True)
-                    rc3.markdown(f"<div class='nowrap-text'>$ {row['Monto $ +']:,.2f}</div>", unsafe_allow_html=True)
-                    if rc4.button("🔍 Ver Conceptos", key=f"btn_ing_{dest}"):
+                    rc1, rc2, rc3, rc4 = st.columns([5, 2, 3, 3])
+                    pct = (row['Monto $ +'] / tot_ing_usd * 100) if tot_ing_usd > 0 else 0
+                    dest_str = acortar(dest, 18)
+                    
+                    rc1.markdown(f"<div title='{dest}' style='font-size: 15px;'><b>{dest_str}</b></div>", unsafe_allow_html=True)
+                    rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
+                    rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ +']:,.2f}</div>", unsafe_allow_html=True)
+                    if rc4.button("🔍 Ver", key=f"btn_ing_{dest}"):
                         st.session_state.drill_ingreso = dest
                         st.rerun()
                 
@@ -174,12 +167,16 @@ else:
                     st.markdown(f"**Conceptos de: {dest}**")
                     df_filt = df[(df['Destinado'] == dest) & ((df['Metodo Bs +'] > 0) | (df['Monto $ +'] > 0))]
                     agrup_conc = df_filt.groupby('Concepto')[['Metodo Bs +', 'Monto $ +']].sum()
+                    total_dest_usd = agrup_conc['Monto $ +'].sum()
                     
                     for conc, row in agrup_conc.iterrows():
-                        rc1, rc2, rc3, rc4 = st.columns([3, 4, 3, 3])
-                        rc1.markdown(f"<div class='nowrap-text'>{conc}</div>", unsafe_allow_html=True)
-                        rc2.markdown(f"<div class='nowrap-text'>Bs {row['Metodo Bs +']:,.2f}</div>", unsafe_allow_html=True)
-                        rc3.markdown(f"<div class='nowrap-text'>$ {row['Monto $ +']:,.2f}</div>", unsafe_allow_html=True)
+                        rc1, rc2, rc3, rc4 = st.columns([5, 2, 3, 3])
+                        pct = (row['Monto $ +'] / total_dest_usd * 100) if total_dest_usd > 0 else 0
+                        conc_str = acortar(conc, 20)
+                        
+                        rc1.markdown(f"<div title='{conc}' style='font-size: 15px;'>{conc_str}</div>", unsafe_allow_html=True)
+                        rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
+                        rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ +']:,.2f}</div>", unsafe_allow_html=True)
                         if rc4.button("👁️ Detalle", key=f"btn_ing_conc_{dest}_{conc}"):
                             st.session_state.drill_ingreso_concepto = conc
                             st.rerun()
@@ -217,11 +214,14 @@ else:
             if st.session_state.drill_egreso is None:
                 st.markdown("**Desglose por Destinado:**")
                 for dest, row in egresos_global.iterrows():
-                    rc1, rc2, rc3, rc4 = st.columns([3, 4, 3, 3])
-                    rc1.markdown(f"<div class='nowrap-text'><b>{dest}</b></div>", unsafe_allow_html=True)
-                    rc2.markdown(f"<div class='nowrap-text'>Bs {row['Monto Bs -']:,.2f}</div>", unsafe_allow_html=True)
-                    rc3.markdown(f"<div class='nowrap-text'>$ {row['Monto $ -']:,.2f}</div>", unsafe_allow_html=True)
-                    if rc4.button("🔍 Ver Conceptos", key=f"btn_egr_{dest}"):
+                    rc1, rc2, rc3, rc4 = st.columns([5, 2, 3, 3])
+                    pct = (row['Monto $ -'] / tot_egr_usd * 100) if tot_egr_usd > 0 else 0
+                    dest_str = acortar(dest, 18)
+                    
+                    rc1.markdown(f"<div title='{dest}' style='font-size: 15px;'><b>{dest_str}</b></div>", unsafe_allow_html=True)
+                    rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
+                    rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ -']:,.2f}</div>", unsafe_allow_html=True)
+                    if rc4.button("🔍 Ver", key=f"btn_egr_{dest}"):
                         st.session_state.drill_egreso = dest
                         st.rerun()
                         
@@ -242,12 +242,16 @@ else:
                     st.markdown(f"**Conceptos de: {dest}**")
                     df_filt = df[(df['Destinado'] == dest) & ((df['Monto Bs -'] > 0) | (df['Monto $ -'] > 0))]
                     agrup_conc = df_filt.groupby('Concepto')[['Monto Bs -', 'Monto $ -']].sum()
+                    total_dest_usd_egr = agrup_conc['Monto $ -'].sum()
                     
                     for conc, row in agrup_conc.iterrows():
-                        rc1, rc2, rc3, rc4 = st.columns([3, 4, 3, 3])
-                        rc1.markdown(f"<div class='nowrap-text'>{conc}</div>", unsafe_allow_html=True)
-                        rc2.markdown(f"<div class='nowrap-text'>Bs {row['Monto Bs -']:,.2f}</div>", unsafe_allow_html=True)
-                        rc3.markdown(f"<div class='nowrap-text'>$ {row['Monto $ -']:,.2f}</div>", unsafe_allow_html=True)
+                        rc1, rc2, rc3, rc4 = st.columns([5, 2, 3, 3])
+                        pct = (row['Monto $ -'] / total_dest_usd_egr * 100) if total_dest_usd_egr > 0 else 0
+                        conc_str = acortar(conc, 20)
+                        
+                        rc1.markdown(f"<div title='{conc}' style='font-size: 15px;'>{conc_str}</div>", unsafe_allow_html=True)
+                        rc2.markdown(f"<div style='font-size: 15px;'>{pct:.1f}%</div>", unsafe_allow_html=True)
+                        rc3.markdown(f"<div style='font-size: 15px;'>$ {row['Monto $ -']:,.2f}</div>", unsafe_allow_html=True)
                         if rc4.button("👁️ Detalle", key=f"btn_egr_conc_{dest}_{conc}"):
                             st.session_state.drill_egreso_concepto = conc
                             st.rerun()
