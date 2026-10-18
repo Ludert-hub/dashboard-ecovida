@@ -116,4 +116,4 @@ else:
         tot_egr_usd = egresos_global['Monto $ -'].sum()
         tot_egr_bs = egresos_global['Monto Bs -'].sum()
 
-        st.markdown("---
+        st.markdown("---")
