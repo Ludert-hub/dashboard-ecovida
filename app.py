@@ -30,6 +30,9 @@ if 'drill_ingreso_concepto' not in st.session_state: st.session_state.drill_ingr
 if 'drill_egreso' not in st.session_state: st.session_state.drill_egreso = None
 if 'drill_egreso_concepto' not in st.session_state: st.session_state.drill_egreso_concepto = None
 
+# Variable para evitar el bug del reseteo del archivo cargado
+if 'last_uploaded' not in st.session_state: st.session_state.last_uploaded = None
+
 # --- BARRA LATERAL Y PERSISTENCIA DE ARCHIVO ---
 DATA_FILE = "datos_guardados.xlsx"
 
@@ -42,16 +45,23 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("<h3 style='text-align: center;'>Actualizar Datos</h3>", unsafe_allow_html=True)
 uploaded_file = st.sidebar.file_uploader("Subir nuevo Excel (reemplaza al anterior)", type=["xlsx"])
 
-# Si el usuario sube un archivo nuevo, lo guardamos en el disco interno
+# Lógica corregida: Solo procesa si es un archivo realmente nuevo
 if uploaded_file is not None:
-    with open(DATA_FILE, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.sidebar.success("✅ Datos actualizados exitosamente.")
-    # Reseteamos las vistas para evitar errores con data nueva
-    st.session_state.drill_ingreso = None
-    st.session_state.drill_ingreso_concepto = None
-    st.session_state.drill_egreso = None
-    st.session_state.drill_egreso_concepto = None
+    file_signature = f"{uploaded_file.name}_{uploaded_file.size}"
+    
+    if st.session_state.last_uploaded != file_signature:
+        with open(DATA_FILE, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.sidebar.success("✅ Datos actualizados exitosamente.")
+        
+        # Reseteamos las vistas para evitar errores con data nueva
+        st.session_state.drill_ingreso = None
+        st.session_state.drill_ingreso_concepto = None
+        st.session_state.drill_egreso = None
+        st.session_state.drill_egreso_concepto = None
+        
+        # Guardamos la firma del archivo para no volver a resetear en el siguiente clic
+        st.session_state.last_uploaded = file_signature
 
 # --- LÓGICA DE PANTALLAS ---
 if not os.path.exists(DATA_FILE):
@@ -90,7 +100,6 @@ else:
         st.sidebar.markdown("<h3 style='text-align: center;'>Filtro de Tiempo</h3>", unsafe_allow_html=True)
         meses_seleccionados = st.sidebar.multiselect("Seleccione los meses a visualizar", options=meses_disponibles, default=meses_disponibles)
         
-        # Aplicamos el filtro de meses a TODO el dataframe
         if meses_seleccionados:
             df = df[df['Mes_Filtro'].isin(meses_seleccionados)]
         
@@ -137,7 +146,6 @@ else:
             </div>
             """, unsafe_allow_html=True)
             
-            # NIVEL 0: VISTA GLOBAL
             if st.session_state.drill_ingreso is None:
                 st.markdown("**Desglose por Destinado:**")
                 for dest, row in ingresos_global.iterrows():
@@ -156,7 +164,6 @@ else:
             else:
                 dest = st.session_state.drill_ingreso
                 
-                # NIVEL 1: VISTA DE CONCEPTOS
                 if st.session_state.drill_ingreso_concepto is None:
                     col_b1, col_b2 = st.columns([1, 3])
                     with col_b1:
@@ -181,7 +188,6 @@ else:
                         fig_pie = px.pie(agrup_conc.reset_index(), names='Concepto', values='Monto $ +', hole=0.4, title=f"Distribución - {dest} ($)")
                         st.plotly_chart(fig_pie, use_container_width=True)
                 
-                # NIVEL 2: VISTA DE TRANSACCIONES (DATA CRUDA)
                 else:
                     conc = st.session_state.drill_ingreso_concepto
                     col_b1, col_b2 = st.columns([1, 3])
@@ -190,11 +196,9 @@ else:
                             st.session_state.drill_ingreso_concepto = None
                             st.rerun()
                             
-                    st.markdown(f"**Transacciones específicas de: {conc}**")
-                    df_detalle = df[(df['Destinado'] == dest) & (df['Concepto'] == conc) & ((df['Metodo Bs +'] > 0) | (df['Monto $ +'] > 0))]
-                    # Formatear la fecha para que se vea bonita
+                    st.markdown(f"**Transacciones de: {conc}**")
+                    df_detalle = df[(df['Destinado'] == dest) & (df['Concepto'] == conc) & ((df['Metodo Bs +'] > 0) | (df['Monto $ +'] > 0))].copy()
                     df_detalle['Fecha'] = df_detalle['Fecha'].dt.strftime('%d/%m/%Y')
-                    # Mostrar solo las columnas relevantes
                     st.dataframe(df_detalle[['Fecha', 'Descripción', 'Monto $ +', 'Metodo Bs +']], use_container_width=True, hide_index=True)
 
         with col_divider:
@@ -210,7 +214,6 @@ else:
             </div>
             """, unsafe_allow_html=True)
             
-            # NIVEL 0: VISTA GLOBAL
             if st.session_state.drill_egreso is None:
                 st.markdown("**Desglose por Destinado:**")
                 for dest, row in egresos_global.iterrows():
@@ -229,7 +232,6 @@ else:
             else:
                 dest = st.session_state.drill_egreso
                 
-                # NIVEL 1: VISTA DE CONCEPTOS
                 if st.session_state.drill_egreso_concepto is None:
                     col_b1, col_b2 = st.columns([1, 3])
                     with col_b1:
@@ -254,7 +256,6 @@ else:
                         fig_pie2 = px.pie(agrup_conc.reset_index(), names='Concepto', values='Monto $ -', hole=0.4, title=f"Distribución - {dest} ($)")
                         st.plotly_chart(fig_pie2, use_container_width=True)
                 
-                # NIVEL 2: VISTA DE TRANSACCIONES (DATA CRUDA)
                 else:
                     conc = st.session_state.drill_egreso_concepto
                     col_b1, col_b2 = st.columns([1, 3])
@@ -263,8 +264,8 @@ else:
                             st.session_state.drill_egreso_concepto = None
                             st.rerun()
                             
-                    st.markdown(f"**Transacciones específicas de: {conc}**")
-                    df_detalle = df[(df['Destinado'] == dest) & (df['Concepto'] == conc) & ((df['Monto Bs -'] > 0) | (df['Monto $ -'] > 0))]
+                    st.markdown(f"**Transacciones de: {conc}**")
+                    df_detalle = df[(df['Destinado'] == dest) & (df['Concepto'] == conc) & ((df['Monto Bs -'] > 0) | (df['Monto $ -'] > 0))].copy()
                     df_detalle['Fecha'] = df_detalle['Fecha'].dt.strftime('%d/%m/%Y')
                     
                     st.dataframe(df_detalle[['Fecha', 'Descripción', 'Monto $ -', 'Monto Bs -']], use_container_width=True, hide_index=True)
