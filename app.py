@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+from github import Github
 
 def acortar(texto, limite=18):
     texto_str = str(texto)
@@ -23,6 +24,24 @@ def clean_numeric(val):
     except Exception:
         return 0.0
 
+# --- Función para guardar el Excel directamente en GitHub ---
+def guardar_en_github(file_bytes, filename):
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        g = Github(token)
+        repo = g.get_repo("Ludert-hub/dashboard-ecovida")
+        try:
+            # Si el archivo ya existe en GitHub, lo actualiza
+            contents = repo.get_contents(filename)
+            repo.update_file(contents.path, "Actualizando base de datos Excel desde la App", file_bytes, contents.sha)
+        except Exception:
+            # Si no existe aún en GitHub, lo crea por primera vez
+            repo.create_file(filename, "Creando base de datos Excel inicial desde la App", file_bytes)
+        return True
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Guardado temporalmente. Para fijarlo en GitHub configura el Token. ({e})")
+        return False
+
 st.set_page_config(page_title="Dashboard Ecovida", layout="wide")
 
 if 'drill_ingreso' not in st.session_state: st.session_state.drill_ingreso = None
@@ -38,14 +57,25 @@ if os.path.exists("logo.jpeg"):
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("<h3 style='text-align: center;'>Actualizar Datos</h3>", unsafe_allow_html=True)
-uploaded_file = st.sidebar.file_uploader("Subir nuevo Excel (reemplaza al anterior)", type=["xlsx"])
+uploaded_file = st.sidebar.file_uploader("Subir nuevo Excel (reemplaza al de la nube)", type=["xlsx"])
 
 if uploaded_file is not None:
     file_signature = f"{uploaded_file.name}_{uploaded_file.size}"
     if st.session_state.last_uploaded != file_signature:
+        file_bytes = uploaded_file.getvalue()
+        
+        # 1. Guardar copia rápida en el servidor local para visualización inmediata
         with open(DATA_FILE, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.sidebar.success("✅ Datos actualizados exitosamente.")
+            f.write(file_bytes)
+            
+        # 2. Subir y sobrescribir permanentemente en GitHub
+        with st.sidebar:
+            with st.spinner("Sincronizando archivo con GitHub en la nube..."):
+                exito = guardar_en_github(file_bytes, DATA_FILE)
+        
+        if exito:
+            st.sidebar.success("✅ Excel guardado permanentemente en GitHub.")
+        
         st.session_state.drill_ingreso = None
         st.session_state.drill_ingreso_concepto = None
         st.session_state.drill_egreso = None
@@ -61,7 +91,7 @@ if not os.path.exists(DATA_FILE):
         else:
             st.markdown("<h1 style='text-align: center; color: #1b5e20;'>ECOVIDA BARINAS</h1>", unsafe_allow_html=True)
         st.markdown("<h3 style='text-align: center; color: #555;'>Plataforma de Control Financiero y Operativo</h3>", unsafe_allow_html=True)
-        st.info("👈 No hay datos guardados. Por favor, sube el archivo de Excel en el panel izquierdo.")
+        st.info("👈 Sube el archivo de Excel por primera vez en el panel izquierdo para dejarlo guardado en la nube.")
 
 else:
     st.markdown("<h2 style='text-align: center; color: #1b5e20; margin-top:0px;'>CONTROL DE ENTRADAS Y SALIDAS ECOVIDA</h2>", unsafe_allow_html=True)
